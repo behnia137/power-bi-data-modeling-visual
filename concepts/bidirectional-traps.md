@@ -1,69 +1,46 @@
-# Bidirectional Traps
+# ⚠️ Bidirectional Relationship Traps
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Bidirectional filtering feels powerful until it creates ambiguous filter paths and wrong results.
 
-Imagine a network of one-way streets. Filters in a star schema are like cars that can only travel in one direction — from dimension tables into the fact table. Everything is orderly and predictable.
-
-Now imagine someone converts all the streets to two-way traffic. Cars (filters) can now go anywhere. But when there are multiple paths between two points, a GPS (Power BI) has to guess which route to take — and sometimes it picks the wrong one, or the two paths create a loop that ties up traffic forever.
-
-Bidirectional relationships are those two-way streets. Individually they can be useful. In a complex model with multiple fact tables, they create ambiguous filter paths and silently wrong numbers.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-flowchart TD
-    DimDate[DimDate]
-    DimProduct[DimProduct]
-    FactSales[FactSales]
-    FactBudget[FactBudget]
-
-    DimDate <-->|bidirectional| FactSales
-    DimDate <-->|bidirectional| FactBudget
-    DimProduct <-->|bidirectional| FactSales
-
-    FactSales -.->|unintended filter leakage| FactBudget
-
-    note["A slicer on FactSales data can now\nfilter FactBudget through DimDate\nResult: budget figures change when\nno sales filter should affect them"]
+flowchart LR
+    subgraph Problem["❌ Ambiguous paths with bidirectional"]
+        DC["📦 DimCategory"] <-->|"Both ↔️"| FS["💰 FactSales"]
+        FS <-->|"Both ↔️"| DS["🏪 DimStore"]
+        DC -.->|"⚠️ unexpected\nfilter leak"| DS
+    end
+    subgraph Solution["✅ Use CROSSFILTER in DAX instead"]
+        DC2["📦 DimCategory"] -->|"Single ➜"| FS2["💰 FactSales"]
+        FS2 -->|"Single ➜"| DS2["🏪 DimStore"]
+        DAX["📝 CROSSFILTER()\nin specific measure"]
+    end
+    style DC fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style FS fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style DS fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style DC2 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style FS2 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style DS2 fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style DAX fill:#dcfce7,stroke:#22c55e,color:#1f2937
 ```
 
-## How it works in practice
+Filters bleed through multiple bidirectional relationships into tables they were never meant to reach.
 
-**Trap 1 — Filter leakage between fact tables:**
+## 🔧 How it actually works
 
-Model has `DimDate` connected bidirectionally to both `FactSales` and `FactBudget`. A user applies a product category filter. The filter flows: `DimProduct` → (bidirectional) → `FactSales` → (bidirectional via `DimDate`) → `FactBudget`. Budget figures are now filtered by product category through an unintended two-hop path.
+Every relationship in Power BI has a direction: filters flow from the "one" side (dimension) into the "many" side (fact). This is predictable and safe. Bidirectional relationships allow filters to travel both ways — which sounds helpful until you have more than two tables in play.
 
-**Trap 2 — Ambiguous filter paths (circular dependency warning):**
+The traffic analogy: turning a few one-way streets bidirectional sounds like an upgrade — more flexibility, fewer U-turns. But in a dense city grid where every street goes both ways, two cars can arrive at the same intersection from opposite directions at the same time. Nobody knows who has right of way. In your model, "two cars arriving at the same intersection" means Power BI has found two valid filter paths to the same table and has to pick one. It may pick the wrong one, silently. Your chart now shows subtly incorrect numbers with no error message.
 
-```
-DimProduct <--> FactSales <--> DimDate <--> FactBudget <--> DimProduct
-```
-Power BI detects multiple filter paths between the same tables and may raise an "ambiguous paths" error, or silently choose one path — either way, results are unpredictable.
+The safe alternative: leave all relationships set to **Single**, and use the `CROSSFILTER()` function inside specific DAX measures that genuinely need reverse filtering. This scopes the bidirectional behavior to exactly one measure, in exactly one calculation, while the rest of the model stays predictable. You get the capability without the side effects. The [cross-filter direction](cross-filter-direction.md) article covers the mechanics; this article is about why those mechanics matter at scale.
 
-**Trap 3 — DISTINCTCOUNT inflation:**
+## 🌍 Real-world example
 
-```dax
--- Intended: count distinct products that have sales
-Products Sold = DISTINCTCOUNT(FactSales[ProductKey])
-```
-With bidirectional filtering between `DimProduct` and `FactSales`, a filter on `DimProduct` that came from another table might expand the set of rows in `FactSales` unexpectedly, inflating the distinct count.
+A model with bidirectional filtering on every relationship was producing a "% of Total" measure that summed to 112% across all categories. The extra 12% came from double-counting caused by ambiguous filter propagation — a filter was traveling an unintended path and including rows it shouldn't. Switching all relationships to Single and rewriting two measures with `CROSSFILTER()` fixed it.
 
-**Safe use of bidirectionality:**
+## 🔗 Related
 
-```dax
--- Better: use CROSSFILTER in a measure instead of always-on bidirectional
-Active Customers =
-CALCULATE(
-    DISTINCTCOUNT(DimCustomer[CustomerKey]),
-    CROSSFILTER(DimCustomer[CustomerKey], FactSales[CustomerKey], BOTH)
-)
-```
-
-### Key facts
-
-- [ ] **Never enable bidirectional on a shared dimension** — a dimension used by two or more fact tables
-- [ ] The Power BI "ambiguous relationships" warning is a sign of a bidirectional trap — do not ignore it
-- [ ] Use `CROSSFILTER()` inside `CALCULATE()` instead of always-on bidirectional to limit the effect to specific measures
-- [ ] Bidirectional is generally safe only when a dimension connects to **exactly one** fact table and no other chain exists
-- [ ] Test bidirectional relationships by verifying every measure on every report page — bugs are often subtle and page-specific
-- [ ] Row-level security (RLS) with bidirectional filtering has additional implications — test RLS scenarios explicitly
-- [ ] If you inherit a model with widespread bidirectional relationships, use **DAX Studio** to trace filter paths before making changes
+- [Cross-Filter Direction](cross-filter-direction.md)
+- [Bridge Tables](bridge-tables.md)
+- [Relationships](relationships.md)

@@ -1,56 +1,43 @@
-# Relationships
+# 🔗 Relationships
 
-## ELI5
+> **🧒 Explain Like I'm 5:** The invisible bridge that lets filters in one table cross over to another.
 
-Imagine two spreadsheets. One lists every order ever placed; the other lists every customer. Each order row has a customer ID number. When you draw a line connecting "customer ID in the orders sheet" to "customer ID in the customers sheet," you have created a **relationship**.
-
-Power BI uses that line to answer questions like "show me total sales grouped by customer city" — even though the city column lives in the customer sheet and the sales column lives in the orders sheet. The relationship is the bridge between them.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-erDiagram
-    DimCustomer ||--o{ FactOrders : "CustomerKey"
-    DimProduct  ||--o{ FactOrders : "ProductKey"
-    DimDate     ||--o{ FactOrders : "OrderDateKey"
+flowchart LR
+    DimDate["📅 DimDate\nDateKey (PK)"]
+    FactSales["💰 FactSales\nOrderDateKey (FK)"]
+    Filter["🔽 Filter: Year = 2024"]
+    Result["📊 Sales for 2024 only"]
 
-    DimCustomer {
-        int CustomerKey PK
-        string FullName
-        string City
-    }
+    Filter --> DimDate
+    DimDate -->|"filter flows ➜"| FactSales
+    FactSales --> Result
 
-    FactOrders {
-        int OrderKey PK
-        int CustomerKey FK
-        int ProductKey FK
-        int OrderDateKey FK
-        decimal Revenue
-    }
-
-    DimProduct {
-        int ProductKey PK
-        string ProductName
-        string Category
-    }
+    style DimDate fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style FactSales fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style Filter fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Result fill:#dcfce7,stroke:#22c55e,color:#1f2937
 ```
 
-## How it works in practice
+A filter applied to DimDate automatically narrows down the rows returned from FactSales.
 
-A report page has a slicer for `DimCustomer[City]` and a card showing `SUM(FactOrders[Revenue])`. When a user selects "Paris," Power BI:
+## 🔧 How it actually works
 
-1. Finds all `CustomerKey` values in `DimCustomer` where `City = "Paris"`
-2. Traverses the relationship to `FactOrders`
-3. Filters `FactOrders` to only those matching customer keys
-4. Evaluates `SUM(Revenue)` on the filtered rows
+A relationship in Power BI is a connection between a column in one table and a matching column in another — typically the primary key of a dimension table linked to a foreign key in the fact table. When you click "Manage Relationships" or drag a column onto another in Model view, you're telling Power BI: "these two columns share the same values — use that to pass filters between them."
 
-No relationship = no filter propagation = wrong (unfiltered) numbers.
+The analogy that sticks: imagine a UN meeting where every delegation speaks a different language. A relationship is the translator sitting between two delegations. Without one, filters applied to DimProduct stay inside DimProduct and never reach FactSales. With one, a slicer on "Product Category" immediately narrows which sales rows are visible.
 
-### Key facts
+Relationships in a star schema flow in one direction by default: from the dimension table (the "one" side) to the fact table (the "many" side). This means filters from dimensions propagate into facts — which is exactly what you want. Reversing that direction, or making it bidirectional, can cause unexpected results. Keep it one-way unless you have a specific reason not to.
 
-- [ ] A relationship requires **one side** with unique values (the "one" side) and a **many side** (the fact table)
-- [ ] The join columns on both sides must be the **same data type**
-- [ ] A model can have multiple relationships between the same two tables, but only **one can be active** at a time
-- [ ] Inactive relationships can still be used in DAX with `USERELATIONSHIP()`
-- [ ] Relationships defined in the model automatically apply to **all visuals on all pages** — no manual joins needed
-- [ ] A missing or broken relationship is the most common cause of "all values show the same total" bugs
+## 🌍 Real-world example
+
+In a sales report, you select "Q3" on a date slicer. Power BI filters DimDate to the rows where Quarter = "Q3", then follows the relationship into FactSales to return only the sales rows whose OrderDateKey matches those dates. The chart updates instantly — all because of one relationship line in the model.
+
+## 🔗 Related
+
+- [Cardinality](cardinality.md)
+- [Cross-Filter Direction](cross-filter-direction.md)
+- [Active vs Inactive Relationships](active-inactive-relationships.md)
+- [Star Schema](star-schema.md)

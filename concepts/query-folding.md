@@ -1,53 +1,50 @@
-# Query Folding
+# 🪗 Query Folding
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Power Query pushes your transformation steps back to the database — so it only downloads the rows you need.
 
-Imagine you ordered a custom pizza from a restaurant. Option A: you call the restaurant and say "make me a pepperoni pizza" — they make it fresh in their professional kitchen. Option B: they send you all their raw ingredients, and you make the pizza yourself on your tiny home stove.
-
-Query folding is Option A. Power Query sends your transformation instructions back to the data source (SQL server, REST API, etc.) and lets it do the heavy work on its own hardware. Without folding, Power Query downloads everything and processes it on your machine.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-flowchart TD
-    subgraph With Folding
-        A[Power Query Step:\nFilter rows where Year = 2024] --> B[Translated to SQL:\nWHERE Year = 2024]
-        B --> C[Database executes\nreturns 50k rows]
+flowchart LR
+    subgraph Folding["✅ Query folds — efficient"]
+        PQ1["🔧 Power Query steps:\nFilter rows where Year = 2024\nRemove columns\nGroup by Category"]
+        SQL1["📜 Translated to SQL:\nSELECT Category, SUM(Sales)\nFROM FactSales\nWHERE Year = 2024\nGROUP BY Category"]
+        DB1["🗄️ Database\n(does the heavy lifting)"]
+        PQ1 -->|"folds ➜"| SQL1
+        SQL1 --> DB1
+        DB1 -->|"returns 50 rows"| Result1["✅ Fast"]
     end
-    subgraph Without Folding
-        D[Power Query Step:\nCustom function or unsupported step] --> E[Database returns\nall 10 million rows]
-        E --> F[Power Query filters\non your machine]
+    subgraph NoFolding["❌ Folding broken — inefficient"]
+        PQ2["🔧 Power Query steps:\nFilter rows where Year = 2024\n⚠️ Added index column\n(breaks folding)"]
+        DB2["🗄️ Database"]
+        DB2 -->|"returns 100M rows\nto Power BI"| PQ2
+        PQ2 -->|"filters in memory"| Result2["❌ Slow, high memory"]
     end
-
-    style B fill:#0078d4,color:#fff
-    style C fill:#dcfce7,stroke:#22c55e,color:#1f2937
-    style E fill:#fee2e2,stroke:#ef4444,color:#1f2937
-    style F fill:#fee2e2,stroke:#ef4444,color:#1f2937
+    style PQ1 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style SQL1 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style DB1 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Result1 fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style PQ2 fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style DB2 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Result2 fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
 ```
 
-## How it works in practice
+When folding works, the database does the filtering. When folding breaks, Power BI downloads everything first.
 
-Every Power Query step that can be translated into the source query language (SQL, OData, etc.) folds back to the source. The moment a step cannot be translated — a custom function, a type change the connector doesn't support, merging with a non-foldable source — folding **breaks** for all steps after it.
+## 🔧 How it actually works
 
-**Check if a step folds:** right-click any step in Power Query Editor → if "View Native Query" is available and not greyed out, that step folds.
+When you apply steps in Power Query — filter rows, remove columns, aggregate — Power BI tries to translate those steps into the native query language of the source (SQL for relational databases, OData for web APIs, etc.). This translation is **query folding**. When it works, the source system handles the transformation and returns only the processed result. When it doesn't work (folding breaks), Power BI downloads the entire raw table and applies the transformations in memory locally.
 
-**Common steps that break folding:**
-- `Table.AddColumn` with custom logic (M code functions)
-- `Table.Buffer`
-- `Table.Combine` across different sources
-- Certain type conversions on non-SQL sources
+The pizza analogy: ordering a custom pizza (folding) means the restaurant makes exactly what you want and hands you one finished pizza. Having all the ingredients delivered to your house (no folding) means you do all the work yourself — you receive 100 ingredients and have to assemble and cook. Both produce the same pizza. One is vastly more work and uses more of your kitchen.
 
-**How to preserve folding:**
-```
--- Good: filter early, before any non-foldable steps
-Source → Filter Rows → Remove Columns → ...non-foldable step...
+Certain Power Query steps break folding: adding an index column, using a custom function, calling `Table.Buffer()`, performing steps that the source query language can't express. The tricky part is that once folding breaks, every subsequent step in the query is also unfolded — even simple filters that would have folded fine on their own. The rule of thumb: put steps that can fold (filter rows, remove columns, rename columns) early in your query, and put steps that might break folding (custom functions, added indexes) as late as possible. You can check whether a step folds by right-clicking it in Power Query and looking for "View Native Query" — if that option is available, the step folds; if it's greyed out, it doesn't.
 
--- Bad: filter after a non-foldable step (filter won't fold)
-Source → ...non-foldable step... → Filter Rows
-```
+## 🌍 Real-world example
 
-**Key facts:**
-- Query folding only works on sources that support it (SQL Server, PostgreSQL, Oracle, SharePoint, OData — yes; Excel, CSV, web scraping — no)
-- Incremental refresh **requires** query folding — if folding breaks, incremental refresh silently falls back to full refresh
-- `Table.Buffer()` deliberately breaks folding — only use it when you need a snapshot to avoid re-evaluation
-- Moving filter and remove-columns steps above any non-foldable step is the single biggest quick win for refresh performance
+A Power Query that loaded 10 years of sales data (400M rows) and then filtered to the current year was taking 12 minutes to refresh because the filter came after an unfolded merge step — so all 400M rows were pulled into memory first. Moving the year filter to the very first step (before the merge) allowed it to fold, cutting refresh time to 45 seconds.
+
+## 🔗 Related
+
+- [Incremental Refresh](incremental-refresh.md)
+- [Import vs DirectQuery](import-vs-directquery.md)
+- [Snowflake Schema](snowflake-schema.md)

@@ -1,51 +1,53 @@
-# Composite Models
+# 🧩 Composite Models
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Mix Import tables and DirectQuery tables in the same report model.
 
-Normally you pick one storage mode for your whole Power BI model: either everything is imported into memory (fast) or everything is queried live from the source (always fresh). Composite models let you **mix both** in the same report.
-
-Think of it like a hybrid car. For city driving (your fast-changing operational data), the electric motor (DirectQuery) handles it — always pulling live data. For highway driving (your large historical dimension tables), the petrol engine (Import) takes over — loaded into memory for speed.
-
-You get the freshness of DirectQuery where you need it and the speed of Import everywhere else.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-flowchart TD
-    subgraph Import mode  fast, in-memory
-        DimDate[DimDate\nImport]
-        DimProduct[DimProduct\nImport]
-        DimCustomer[DimCustomer\nImport]
-        AggSales[AggSales\nImport aggregation table]
+flowchart LR
+    subgraph Model["🧩 Composite Model"]
+        Import1["📦 DimProduct\n(Import — fast)"]
+        Import2["📅 DimDate\n(Import — fast)"]
+        DQ["💰 FactSales\n(DirectQuery — live)"]
     end
+    Source1["🗄️ SQL Server\n(live source)"]
+    Source2["📁 Excel / CSV\n(static file)"]
 
-    subgraph DirectQuery mode  always live
-        FactSales[FactSales\nDirectQuery]
-    end
+    Source2 --> Import1
+    Source2 --> Import2
+    Source1 <-->|"query on demand"| DQ
 
-    DimDate     -->|relationship| FactSales
-    DimProduct  -->|relationship| FactSales
-    DimCustomer -->|relationship| FactSales
-    AggSales    -->|aggregation covers| FactSales
+    Import1 --> DQ
+    Import2 --> DQ
+    Report["📊 Power BI Report"]
+    DQ --> Report
+    Import1 --> Report
+
+    style Import1 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Import2 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style DQ fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style Report fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style Source1 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Source2 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
 ```
 
-## How it works in practice
+Import tables power fast dimension filtering. DirectQuery delivers live fact data.
 
-A finance team needs a report on a 500-million-row transaction table in Azure Synapse. Importing all rows is impractical. But the dimension tables (product, customer, date) are small and change infrequently.
+## 🔧 How it actually works
 
-The composite model solution:
-- `FactTransactions` — DirectQuery against Synapse (always live, never imported)
-- `DimDate`, `DimProduct`, `DimCustomer` — Import mode (loaded into VertiPaq, fast filter performance)
-- `AggMonthlySales` — Import aggregation table covering common rolled-up queries
+A **composite model** lets you combine tables in **Import mode** (data copied into Power BI's in-memory engine) with tables in **DirectQuery mode** (data queried live from the source) — all in the same semantic model. Before composite models existed, you had to choose one mode for the entire report. Now you can pick the right mode per table.
 
-When a visual asks for revenue by product category for the current month, Power BI checks if the aggregation table satisfies the query. If yes, the query hits the in-memory aggregation (milliseconds). If not, it falls through to DirectQuery against Synapse.
+The hybrid car analogy fits: a hybrid uses its battery for short city trips (efficient, instant, quiet) and its engine for long highway runs (necessary when you need more range). Composite models work the same way — put your dimension tables in Import mode for instant filter performance, and put your large or frequently updated fact tables in DirectQuery mode so reports always show current data without waiting for a scheduled refresh.
 
-### Key facts
+The practical caveat: when a query involves both Import and DirectQuery tables, Power BI has to query the DirectQuery source and then join the results with the in-memory data — which takes longer than a pure Import query. For most cases this is acceptable. The real power of composite models is pairing a DirectQuery source with pre-built [aggregation tables](aggregation-tables.md) in Import mode, so most queries hit the fast aggregate and only rare detail-level queries fall through to the live source.
 
-- [ ] Composite models require **Power BI Premium** or **Premium Per User** for publishing to the service
-- [ ] Import tables in a composite model refresh on a schedule — they are **not** real-time
-- [ ] DirectQuery tables generate live SQL queries on every visual render — ensure your source can handle the load
-- [ ] Relationships between an Import table and a DirectQuery table are called **limited relationships** — some DAX functions behave differently across them
-- [ ] Aggregation tables (Import) can dramatically reduce DirectQuery hits when configured correctly
-- [ ] You cannot mix DirectQuery sources from two different databases that are not related unless using a supported gateway configuration
-- [ ] Test query performance thoroughly — composite models can produce unexpectedly slow visuals if aggregations are not tuned
+## 🌍 Real-world example
+
+A real-time operations dashboard pulls transaction data from a live Azure SQL database (DirectQuery) but filters by product hierarchy and store region from a static dimension file (Import). Dimension slicers are instantaneous; the transaction charts reflect data from the last few seconds. Before composite models, you'd have to choose: accept stale Import data, or accept slow pure-DirectQuery dimension filters.
+
+## 🔗 Related
+
+- [Import vs DirectQuery](import-vs-directquery.md)
+- [Aggregation Tables](aggregation-tables.md)
+- [Star Schema](star-schema.md)

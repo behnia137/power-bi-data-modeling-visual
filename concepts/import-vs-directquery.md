@@ -1,59 +1,43 @@
-# Import vs DirectQuery
+# 📥 Import vs DirectQuery
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Import copies data into Power BI at refresh time. DirectQuery asks the source every time a visual loads.
 
-**Import mode** is like printing out the database and working from the printout. It is fast because everything is already on your desk, but it goes stale — you need to reprint (refresh) to see new data.
-
-**DirectQuery mode** is like keeping a live phone line open to the database. Every time you ask a question, it calls the database in real time. The data is always fresh, but every question requires a phone call — and if the database is slow or busy, you wait.
-
-Most models should start with Import. Move to DirectQuery only when data freshness requirements or data volume make Import impractical.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
 flowchart LR
-    subgraph Import mode
-        PQ1[Power Query\nETL] -->|loads at refresh| VP[VertiPaq\nin-memory engine]
-        VP -->|instant response| V1[Visuals]
+    subgraph ImportPath["📥 Import mode"]
+        S1["🗄️ Data Source"] -->|"refresh copies\ndata in"| V1["⚡ VertiPaq\n(in-memory)"]
+        V1 -->|"fast answer"| R1["📊 Report"]
     end
-
-    subgraph DirectQuery mode
-        V2[Visuals] -->|every interaction| DQ[DAX → SQL translation]
-        DQ -->|live query| DB[(Source database)]
-        DB -->|result| V2
+    subgraph DQPath["🔗 DirectQuery mode"]
+        R2["📊 Report"] -->|"visual loads\n→ SQL sent"| S2["🗄️ Data Source"]
+        S2 -->|"source responds\n(slower)"| R2
     end
+    style S1 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style V1 fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style R1 fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style R2 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style S2 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
 ```
 
-## How it works in practice
+Import is fast because the data lives in memory. DirectQuery is live because it never caches.
 
-| Dimension | Import | DirectQuery |
-|---|---|---|
-| Data freshness | As of last refresh (scheduled or manual) | Real-time (seconds old) |
-| Query speed | Very fast — in-memory VertiPaq | Depends on source DB performance |
-| Data volume | Limited by RAM / capacity | Effectively unlimited |
-| DAX support | Full DAX | Some DAX functions unavailable |
-| Power Query transformations | Full support | Limited — only foldable steps |
-| Row-level security | Supported | Supported |
-| Composite models | Mix Import + DirectQuery tables | Yes (the DirectQuery side) |
+## 🔧 How it actually works
 
-**When to use Import:**
-- Tables under ~1 billion rows
-- Data refreshes are acceptable every 30 minutes or less
-- Complex DAX measures are required
-- Source database cannot handle the query load of a live connection
+**Import mode** copies data from your source into Power BI's VertiPaq engine — a highly compressed, column-oriented, in-memory store. Queries run against this in-memory copy, which is why Import reports are so fast. The tradeoff: the data is only as fresh as your last scheduled refresh (hourly at best on standard Premium capacity). The dataset also has to fit in available memory.
 
-**When to use DirectQuery:**
-- Data must be current to the minute or second
-- Tables are too large to import (hundreds of millions to billions of rows)
-- Organizational governance requires data never leave the source system
-- Source is a real-time streaming database
+**DirectQuery mode** sends a SQL (or equivalent) query to your source every time a visual needs to render. The data is always current — seconds-fresh — because it's never cached. The tradeoff: every click, every slicer change, every page load generates a round-trip to the database. Performance depends entirely on the source system. A slow or heavily loaded database means a slow report, and there's nothing you can do about it on the Power BI side.
 
-### Key facts
+The printout analogy captures it well: Import is printing a document and working from the printout — fast to read, doesn't reflect changes made after printing. DirectQuery is opening the live original file every time you want to read it — always current, but you're at the mercy of the server's availability and speed. The right choice depends on how fresh your data needs to be and how large your dataset is. For most reporting scenarios, Import wins. For real-time operational dashboards or datasets too large to fit in memory, DirectQuery (or a [composite model](composite-models.md)) is the answer.
 
-- [ ] Import mode stores a compressed copy of your data in VertiPaq — it is **not** connected to the source at query time
-- [ ] DirectQuery sends a **SQL (or equivalent) query** to the source for every visual render — the source must be capable of handling this load
-- [ ] Some DAX functions (`EARLIER`, certain time intelligence functions) are **not supported** in DirectQuery mode
-- [ ] Power Query transformations that cannot be "folded" into source SQL are **not supported** in DirectQuery
-- [ ] Import models can refresh up to **48 times per day** on Power BI Premium
-- [ ] A single model can mix both modes using **composite models** — dimension tables in Import, large fact tables in DirectQuery
-- [ ] Always test DirectQuery performance with the expected concurrent user count before publishing to production
+## 🌍 Real-world example
+
+A financial reporting team uses Import for their monthly P&L reports (data refreshes overnight, 100M rows compresses to 400MB in VertiPaq, every visual is instant). A trading desk uses DirectQuery for their live position dashboard (data must be seconds-fresh, and they're willing to accept 2–3 second visual load times in exchange for real-time accuracy).
+
+## 🔗 Related
+
+- [Composite Models](composite-models.md)
+- [Aggregation Tables](aggregation-tables.md)
+- [Query Folding](query-folding.md)
+- [Incremental Refresh](incremental-refresh.md)

@@ -1,66 +1,41 @@
-# Bridge Tables
+# 🌉 Bridge Tables
 
-## ELI5
+> **🧒 Explain Like I'm 5:** A helper table that resolves many-to-many relationships without breaking your model.
 
-Imagine a student can enroll in many courses, and a course can have many students. You cannot draw a direct line between the students list and the courses list without it becoming a tangled mess — that is a many-to-many relationship.
-
-The fix is simple: create a third table, the **enrollment table**, that just records pairs — "Student A is in Course X," "Student A is in Course Y," "Student B is in Course X." That enrollment table is the **bridge table**. It breaks the many-to-many into two clean one-to-many relationships.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-erDiagram
-    DimProduct     ||--o{ BridgeProductTag : "ProductKey"
-    DimTag         ||--o{ BridgeProductTag : "TagKey"
-    BridgeProductTag ||--o{ FactSales : "ProductKey"
-
-    DimProduct {
-        int ProductKey PK
-        string ProductName
-        string Category
-    }
-
-    DimTag {
-        int TagKey PK
-        string TagName
-    }
-
-    BridgeProductTag {
-        int ProductKey FK
-        int TagKey FK
-    }
-
-    FactSales {
-        int SalesKey PK
-        int ProductKey FK
-        decimal Revenue
-    }
+flowchart LR
+    subgraph Problem["❌ Without bridge — many-to-many"]
+        P1["📦 DimProduct"] <-->|"⚠️ ambiguous"| T1["🏷️ DimTag"]
+    end
+    subgraph Solution["✅ With bridge — two clean 1:many"]
+        P2["📦 DimProduct\nProductID (PK)"] -->|"1 : *"| B["🌉 BridgeProductTag\nProductID (FK)\nTagID (FK)"]
+        B -->|"* : 1"| T2["🏷️ DimTag\nTagID (PK)"]
+    end
+    style P1 fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style T1 fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style P2 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style B fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style T2 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
 ```
 
-> A product can have many tags; a tag can apply to many products. `BridgeProductTag` resolves the many-to-many cleanly.
+The bridge table turns one messy many-to-many into two clean one-to-many relationships.
 
-## How it works in practice
+## 🔧 How it actually works
 
-A retail model needs to tag products with multiple labels (e.g., "Seasonal," "Clearance," "New Arrival"). One product may carry several tags. Reports need to filter sales by tag.
+A **bridge table** (also called a junction or associative table) sits between two entities that have a many-to-many relationship. Instead of trying to link DimProduct directly to DimTag — where one product can have many tags and one tag can apply to many products — you introduce a third table that has one row per product-tag combination. Now DimProduct has a clean 1:many relationship to the bridge, and the bridge has a clean 1:many relationship to DimTag.
 
-**Without a bridge table:** You would need to enable many-to-many cardinality between `DimTag` and `DimProduct`. This works but is harder to control, especially when `DimProduct` connects to multiple fact tables.
+The event sign-in sheet analogy: the sheet is the bridge. It has one row for every combination of "which person attended which event." The people table and the events table don't directly connect — they both connect to the sign-in sheet, and the sheet is where the two worlds meet cleanly.
 
-**With a bridge table:**
+In Power BI, the filter behavior of a bridge table requires some care. Filters flow from DimProduct through the bridge into DimTag, but making that work in both directions usually requires enabling bidirectional filtering on at least one of the relationships — which introduces the risks described in [cross-filter direction](cross-filter-direction.md). The cleaner approach is to keep filters single-direction and write DAX measures that explicitly navigate through the bridge when needed.
 
-1. `DimTag` has one row per tag
-2. `BridgeProductTag` has one row per product-tag combination
-3. `DimProduct` joins to `BridgeProductTag` (1:many)
-4. `DimTag` joins to `BridgeProductTag` (1:many)
-5. `BridgeProductTag` joins to `FactSales` via `ProductKey`
+## 🌍 Real-world example
 
-Filter propagation path: `DimTag` → `BridgeProductTag` → `FactSales` — clean and predictable.
+A product catalog where each product can have multiple tags ("organic," "gluten-free," "seasonal") and each tag applies to multiple products. A bridge table `BridgeProductTag` with columns `ProductID` and `TagID` resolves this cleanly. A slicer on "Tag = organic" can now correctly filter down to only the products tagged as organic, without any many-to-many ambiguity.
 
-### Key facts
+## 🔗 Related
 
-- [ ] A bridge table contains **only foreign keys** — no measures, no descriptive attributes
-- [ ] Each row in the bridge represents a **single valid pairing** of the two joined entities
-- [ ] Both relationships from the bridge table to its parent dimensions should be **Many-to-One** (bridge is the "many" side)
-- [ ] The bridge table does **not** need to be visible in the report field list — hide it from report view
-- [ ] Watch out for **fan-out**: if the bridge multiplies rows when a filter is applied, measures may double-count — use `DISTINCTCOUNT` not `COUNT` for such measures
-- [ ] If the bridge connects to the fact table, ensure the join key is consistent (e.g., both use `ProductKey`) or the filter chain breaks
-- [ ] Bridge tables are the correct, explicit alternative to relying on Power BI's built-in many-to-many cardinality
+- [Cardinality](cardinality.md)
+- [Cross-Filter Direction](cross-filter-direction.md)
+- [Bidirectional Relationship Traps](bidirectional-traps.md)

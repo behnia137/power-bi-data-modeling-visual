@@ -1,88 +1,45 @@
-# Calculated Tables
+# 🧮 Calculated Tables
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Tables you build entirely in DAX — exist only in the model, no source data required.
 
-Most tables in Power BI come from your data source — a database, Excel file, or API. A **calculated table** is a table you create entirely inside Power BI using a DAX formula, with no external source required.
-
-It is like building a new spreadsheet tab inside Excel using formulas that reference other tabs. The result is a real table in your model — you can create relationships to it, write measures against it, and show columns from it in visuals.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-flowchart TD
-    subgraph Source tables  loaded from data source
-        FactSales[FactSales]
-        DimProduct[DimProduct]
-        DimDate[DimDate - raw]
-    end
+flowchart LR
+    DAX["📝 DAX Expression\nCALENDAR(DATE(2020,1,1),\nDATE(2026,12,31))"]
+    Engine["⚙️ VertiPaq\nengine"]
+    CalcTable["🧮 Calculated Table\n(in-memory only)"]
+    Relationship["🔗 Used in\nrelationships"]
+    Visual["📊 Used in\nreport visuals"]
 
-    subgraph Calculated tables  created by DAX
-        CalcDate["DimCalendar\n= CALENDARAUTO()"]
-        RolePlaying["DimShipDate\n= DimDate"]
-        Summary["SalesSummary\n= SUMMARIZECOLUMNS(...)"]
-        Disconnected["SlicerValues\n= DATATABLE(...)"]
-    end
+    DAX --> Engine
+    Engine --> CalcTable
+    CalcTable --> Relationship
+    CalcTable --> Visual
 
-    FactSales --> Summary
-    DimDate --> RolePlaying
-    CalcDate -->|relationship| FactSales
-    RolePlaying -->|inactive relationship| FactSales
+    style DAX fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Engine fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style CalcTable fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style Relationship fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style Visual fill:#dcfce7,stroke:#22c55e,color:#1f2937
 ```
 
-## How it works in practice
+The table is real and fully usable — it just lives inside the model, not in any external source.
 
-**Common use cases:**
+## 🔧 How it actually works
 
-**1. Date table:**
-```dax
-DimCalendar =
-ADDCOLUMNS(
-    CALENDAR(DATE(2020,1,1), DATE(2026,12,31)),
-    "Year",        YEAR([Date]),
-    "MonthNumber", MONTH([Date]),
-    "MonthName",   FORMAT([Date], "MMMM"),
-    "Quarter",     "Q" & QUARTER([Date]),
-    "WeekDay",     WEEKDAY([Date], 2)
-)
-```
+A **calculated table** is a table defined by a DAX expression. You write the expression in the Data view using "New Table," and Power BI evaluates the DAX, materializes the result into memory, and stores it as a full table inside the model. It has columns, rows, data types — everything a regular imported table has. You can create relationships to it, write measures that reference it, and use its columns in report visuals.
 
-**2. Role-playing dimension copy:**
-```dax
-DimShipDate = DimDate
-DimDeliveryDate = DimDate
-```
+The whiteboard analogy: you're in a meeting and you draw a table on the whiteboard. It's completely real and everyone in the room can read it. But it only exists in that room — there's no file on a server somewhere, no database backing it. The moment you wipe the whiteboard (or reload the model), it gets recalculated fresh from the same DAX expression.
 
-**3. Static slicer values (disconnected slicer):**
-```dax
-MeasureSelector =
-DATATABLE(
-    "MeasureName", STRING,
-    "SortOrder",   INTEGER,
-    {
-        {"Revenue",  1},
-        {"Quantity", 2},
-        {"Profit",   3}
-    }
-)
-```
+Common uses: building a date table with `CALENDAR()` or `CALENDARAUTO()` when you don't have one in your source, creating static lookup tables like a `{ "A", "B", "C" }` value list, generating disconnected slicer tables for what-if scenarios, or materializing a complex filtered subset of a larger table for performance. The important gotcha: calculated tables are recalculated on every model refresh, so they're not free — very large or very complex calculated tables can slow down refresh time.
 
-**4. Pre-aggregated summary table:**
-```dax
-MonthlySummary =
-SUMMARIZECOLUMNS(
-    DimDate[Year],
-    DimDate[MonthNumber],
-    DimProduct[Category],
-    "Revenue", SUM(FactSales[Revenue])
-)
-```
+## 🌍 Real-world example
 
-### Key facts
+Your data source doesn't have a dedicated date table. You write `DimDate = CALENDAR(DATE(2018,1,1), DATE(2030,12,31))` in Power BI, add calculated columns for Year, Quarter, Month, and Week, mark it as a date table, and build a relationship to your fact table. A fully functional date dimension — no source changes, no Power Query steps, just DAX.
 
-- [ ] Calculated tables are computed at **model refresh time** and stored in VertiPaq — they are not recalculated at query time
-- [ ] They count against your model's memory footprint — avoid large calculated tables if an equivalent Power Query transformation would be smaller
-- [ ] Calculated tables can reference other calculated tables, but **circular dependencies** will cause a model error
-- [ ] Relationships to and from calculated tables work exactly like relationships to regular tables
-- [ ] `CALENDARAUTO()` generates a date table from the earliest and latest dates found in all date columns in your model — convenient but less controlled than an explicit `CALENDAR()` call
-- [ ] Calculated tables created via DAX refresh with every dataset refresh — there is no separate refresh schedule
-- [ ] Changes to source data are only reflected after a full model refresh — calculated tables do not update in real time
+## 🔗 Related
+
+- [Date Table Requirements](date-table-requirements.md)
+- [Aggregation Tables](aggregation-tables.md)
+- [Import vs DirectQuery](import-vs-directquery.md)

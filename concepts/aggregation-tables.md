@@ -1,60 +1,45 @@
-# Aggregation Tables
+# 📋 Aggregation Tables
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Pre-computed summary tables Power BI hits first — detail tables only if the summary doesn't cover it.
 
-Imagine a library with a billion books. Finding a specific book takes a long time. But the librarian keeps a **summary sheet** on the front desk: "Fiction: 300 million books, Non-fiction: 400 million books, Reference: 300 million books." When you ask "how many non-fiction books are there?" the librarian answers instantly from the sheet without searching the stacks.
-
-An aggregation table is that summary sheet. It stores pre-rolled-up versions of your fact data. Power BI checks the aggregation table first. If the question is general enough to be answered by the summary, it uses that. Only for very specific questions does it go to the full detail table.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-flowchart TD
-    Report[Report Visual\ne.g. Revenue by Category by Month]
+flowchart TB
+    Query["📊 Report query:\nSales by Month + Category"]
+    Agg["📋 AggSales\n(monthly summary\n— Import, fast)"]
+    Fact["💰 FactSales\n(100M rows\n— DirectQuery, slow)"]
+    Result["✅ Answer in milliseconds"]
+    FallThrough["✅ Answer in seconds\n(detail fallback)"]
 
-    Report --> Check{Does the query\nmatch an aggregation?}
+    Query --> Agg
+    Agg -->|"✅ covers it — fast path"| Result
+    Agg -.->|"doesn't cover it\nfalls through"| Fact
+    Fact -.-> FallThrough
 
-    Check -->|Yes — use summary| AggTable[AggMonthlySales\nImport\nCategory  Month  Revenue\n~10K rows]
-    Check -->|No — drill to detail| FactSales[FactSales\nDirectQuery\nAll transactions\n500M rows]
-
-    subgraph Source Database
-        FactSales
-    end
+    style Query fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Agg fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style Fact fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Result fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style FallThrough fill:#dcfce7,stroke:#22c55e,color:#1f2937
 ```
 
-## How it works in practice
+Power BI automatically routes each query to the fastest table that can answer it.
 
-A model has `FactSales` in DirectQuery mode with 500 million rows. Reports showing year-over-year revenue by category are slow because every render fires a large SQL query.
+## 🔧 How it actually works
 
-The solution is to create an aggregation table:
+An **aggregation table** is a pre-summarized version of a large fact table. Instead of storing 100 million individual transaction rows, you pre-aggregate them by month, product category, and store — producing maybe 50,000 rows. You store this smaller table in Import mode, map it to the detail table using Power BI's aggregations feature, and Power BI will automatically use the aggregate whenever a query can be satisfied at that level of detail.
 
-```dax
--- Calculated table (or load from Power Query)
-AggMonthlySales =
-SUMMARIZECOLUMNS(
-    DimDate[Year],
-    DimDate[MonthNumber],
-    DimProduct[Category],
-    "Revenue", SUM(FactSales[Revenue]),
-    "Quantity", SUM(FactSales[Quantity])
-)
-```
+The library analogy: a library keeps a "most popular books" shelf right by the door. If the book you want is there, you grab it in seconds. If it's not on that shelf, a librarian goes to find it in the stacks. The full catalog is still there, and you always get the right book — but most visitors never need to wait for the full search.
 
-Then configure the aggregation in Power BI Desktop:
-1. Right-click `AggMonthlySales` → **Manage aggregations**
-2. Map `Revenue` → `SUM` of `FactSales[Revenue]`
-3. Map `Year` → `GroupBy` of `DimDate[Year]`
-4. Map `MonthNumber` → `GroupBy` of `DimDate[MonthNumber]`
-5. Map `Category` → `GroupBy` of `DimProduct[Category]`
+The key phrase is "automatically routes." You define the aggregation table and the column mappings once, and Power BI decides which table to use at query time — no DAX changes needed, no separate measures for aggregated vs detail. A chart summarizing sales by quarter hits the aggregate. A drillthrough to individual transactions hits the fact table. Both work from the same model without any special handling from the report author.
 
-Now when a visual requests revenue grouped by category and month, Power BI routes the query to `AggMonthlySales` (in-memory, milliseconds). If a user drills down to individual order level, it falls through to `FactSales` (DirectQuery).
+## 🌍 Real-world example
 
-### Key facts
+An enterprise sales report with 5 years of daily transaction data (roughly 500M rows in DirectQuery) was taking 8 seconds per visual. After adding an aggregation table summarizing sales by week, product group, and region (about 200K rows in Import), the same report loaded in under a second for 90% of queries. The remaining 10% — detailed transaction drillthrough — still used the live source and took 3–4 seconds. A significant improvement with no changes to the report itself.
 
-- [ ] Aggregation tables must be in **Import** mode to benefit from in-memory speed
-- [ ] The fact table they cover should be in **DirectQuery** mode (the whole point is avoiding it)
-- [ ] Hide the aggregation table from the report field list — it should be invisible to report authors
-- [ ] Aggregations only fire when the query granularity is at or **above** the aggregation level — finer grain always falls through
-- [ ] Use `SUMMARIZECOLUMNS` in Power Query or a calculated table to build the aggregation
-- [ ] Aggregation tables are a key technique in **composite models**
-- [ ] Refresh the aggregation table on a schedule — it does not automatically stay in sync with the DirectQuery source
+## 🔗 Related
+
+- [Composite Models](composite-models.md)
+- [Import vs DirectQuery](import-vs-directquery.md)
+- [Calculated Tables](calculated-tables.md)

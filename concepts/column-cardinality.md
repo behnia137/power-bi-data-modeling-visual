@@ -1,60 +1,37 @@
-# Column Cardinality
+# 📏 Column Cardinality
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Columns with millions of unique values compress poorly — and slow down every report that uses them.
 
-**Column cardinality** is simply: how many unique values does this column have?
-
-A `Gender` column with values "Male," "Female," and "Non-binary" has a cardinality of 3 — very low. A `TransactionID` column with one unique value per row in a 50-million-row table has a cardinality of 50 million — very high.
-
-This matters enormously in Power BI because VertiPaq (the in-memory engine) compresses low-cardinality columns incredibly well and barely compresses high-cardinality columns at all. A single high-cardinality column can consume more RAM than an entire well-designed model.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-flowchart TD
-    subgraph Low cardinality — compresses extremely well
-        C1["Country\n~200 unique values\nVertiPaq stores: 200 values + row index"]
-        C2["Status\n3 unique values\nVertiPaq stores: 3 values + row index"]
+flowchart LR
+    subgraph LowCard["✅ Low cardinality — compresses great"]
+        C1["📮 PostalCode\n~40,000 unique values\n→ small dictionary\n→ great compression"]
     end
-
-    subgraph High cardinality — compresses poorly
-        C3["TransactionID\n50M unique values\nVertiPaq stores: 50M values — no compression"]
-        C4["Timestamp with seconds\n86,400 unique values per day\nVertiPaq stores: very large dictionary"]
+    subgraph HighCard["❌ High cardinality — compresses poorly"]
+        C2["🆔 TransactionGUID\n100M unique values\n→ no repetition\n→ no compression"]
     end
+    style C1 fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style C2 fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
 ```
 
-## How it works in practice
+Columns that repeat values compress well. Columns where every row is unique don't compress at all.
 
-A developer imports an order table with these columns:
+## 🔧 How it actually works
 
-| Column | Unique values | Impact |
-|---|---|---|
-| `OrderID` | 5,000,000 | High — large dictionary, poor compression |
-| `CustomerID` | 250,000 | Medium |
-| `ProductSKU` | 12,000 | Medium-low |
-| `OrderStatus` | 4 | Very low — compresses nearly to zero |
-| `OrderTimestamp` | 4,320,000 | Very high — seconds precision blows up the dictionary |
-| `OrderDate` | 1,826 | Low — date-only is fine |
+VertiPaq — Power BI's in-memory engine — stores columns using **dictionary encoding**. It builds a dictionary of unique values for each column, then stores each row as an index into that dictionary rather than the raw value. If a column has only 100 unique values across 10 million rows, VertiPaq only needs to store 100 values in the dictionary and 10 million small integers. Compression is excellent.
 
-**Optimization actions:**
-- Remove `OrderID` from the fact table if it is never used in visuals or relationships — it wastes significant memory
-- Truncate `OrderTimestamp` to minute or hour precision if second-level granularity is not needed
-- Replace free-text columns like `Notes` with a category code when possible
+If a column has 10 million unique values (like a GUID, a full timestamp with milliseconds, or a free-text note), VertiPaq still stores a dictionary — but now the dictionary has 10 million entries. There's no repetition to compress. The column takes up nearly as much memory as the raw data would, and every query that touches it has to process all 10 million distinct values.
 
-**Checking cardinality in DAX:**
-```dax
--- Measure to audit cardinality of a column
-Distinct OrderIDs = DISTINCTCOUNT(FactOrders[OrderID])
-```
+High-cardinality columns hurt in three ways: they consume more RAM, they slow down queries that filter or group by them, and they can push your dataset over the size limit for Power BI Premium capacity. The fixes are practical: remove the column if it's not needed in reports, truncate timestamps to the grain you actually report on (day instead of millisecond), or replace GUIDs with integer surrogate keys in Power Query before the data reaches the model.
 
-Or use **DAX Studio** → **VertiPaq Analyzer** to see column-level size and cardinality for the entire model.
+## 🌍 Real-world example
 
-### Key facts
+A web analytics dataset included a `SessionID` column — a UUID per session, 50 million rows of them. Just that one column was consuming 1.8 GB in the model and making every query slower. Removing it (it wasn't used in any report) cut model size by 40% and reduced average query time from 4 seconds to under 1 second.
 
-- [ ] High-cardinality columns are the **number one cause of bloated Power BI model sizes**
-- [ ] A column that is unique per row (like a GUID or timestamp with seconds) provides almost zero compression benefit in VertiPaq
-- [ ] Remove columns that are **never used** in visuals, relationships, or measures — they consume memory for no benefit
-- [ ] Date columns stored as `DateTime` have far higher cardinality than `Date` — strip the time component unless needed
-- [ ] Free-text columns (comments, descriptions) have very high cardinality and large dictionary sizes — consider excluding them
-- [ ] **DAX Studio's VertiPaq Analyzer** is the best tool to identify high-cardinality columns in a live model
-- [ ] Reducing column cardinality is often more impactful on model size than reducing row count
+## 🔗 Related
+
+- [Import vs DirectQuery](import-vs-directquery.md)
+- [Cardinality](cardinality.md)
+- [Incremental Refresh](incremental-refresh.md)

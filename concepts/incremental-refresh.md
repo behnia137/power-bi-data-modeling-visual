@@ -1,51 +1,43 @@
-# Incremental Refresh
+# 🔄 Incremental Refresh
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Refresh only the new rows — historical data stays untouched.
 
-Imagine your report pulls 3 years of sales data. Every morning it refreshes. Without incremental refresh: it re-downloads and re-processes all 3 years every single time. With incremental refresh: it only downloads yesterday's new data. The old data is already there — untouched.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-flowchart TD
-    A[Full Date Range\n2022 - 2024] --> B{Incremental Refresh Policy}
-    B --> C[Archive Window\n2022 - Nov 2024\nStored, not refreshed]
-    B --> D[Refresh Window\nLast 2 months\nRe-queried every refresh]
-    D --> E[Source DB runs:\nWHERE Date >= 2024-10-01]
+flowchart LR
+    subgraph Table["💰 FactSales — full table"]
+        Archive["🗄️ Archive partition\n(Jan 2020 – Nov 2025)\n🔒 untouched on refresh"]
+        Refresh["🔄 Refresh window\n(last 3 months)\n✅ re-queried each refresh"]
+    end
+    Params["⚙️ RangeStart\nRangeEnd\n(Power Query parameters)"]
+    Source["🗄️ Data Source"]
 
-    style B fill:#0078d4,color:#fff
-    style C fill:#dbeafe,stroke:#3b82f6,color:#1f2937
-    style D fill:#dcfce7,stroke:#22c55e,color:#1f2937
-    style E fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    Params --> Refresh
+    Source -->|"only rows within\nRangeStart–RangeEnd"| Refresh
+
+    style Archive fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Refresh fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style Params fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style Source fill:#dbeafe,stroke:#3b82f6,color:#1f2937
 ```
 
-## How it works in practice
+The archive stays frozen. Only the refresh window moves forward with each refresh cycle.
 
-**Requirements:**
-1. Power BI Premium, Premium Per User, or Fabric capacity (not Pro)
-2. Query folding must work on the date/time column used for the policy
-3. The table must have a date or datetime column to partition on
+## 🔧 How it actually works
 
-**Setup steps:**
-1. In Power Query, create two parameters: `RangeStart` (DateTime) and `RangeEnd` (DateTime)
-2. Filter your date column: `>= RangeStart AND < RangeEnd`
-3. Power BI replaces these at refresh time with the actual window boundaries
-4. In the dataset settings, define: Archive = 3 years, Refresh = 2 months
+**Incremental refresh** splits your fact table into partitions. Everything older than your defined cutoff (say, 3 months) is frozen in the **archive partition** — it was loaded once and never touched again. The **refresh window** covers only recent data (the last 3 months, or whatever you configure) and is re-queried on every refresh cycle.
 
-```powerquery
-// Power Query filter — must use these exact parameter names
-= Table.SelectRows(Source, each [OrderDate] >= RangeStart and [OrderDate] < RangeEnd)
-```
+The 500-page report analogy: if you only added one new page to a report, you wouldn't reprint all 500 pages every morning — you'd just print the new page. Incremental refresh is the same idea applied to your Power BI dataset. Historical years stay exactly as they were. Only the period where new or changing data could appear gets re-loaded.
 
-**What happens at refresh:**
-- Power BI partitions the table by period (month or day)
-- Archive partitions are kept as-is
-- Only refresh-window partitions are re-queried
-- New data lands in the latest partition
+Setting it up requires two Power Query parameters named exactly `RangeStart` and `RangeEnd` (the names are mandatory — Power BI looks for them specifically). You apply those parameters as a filter on your date column in Power Query. Then in the incremental refresh policy settings, you define how far back the archive extends and how wide the refresh window is. Power BI handles the rest: partitioning the table, freezing the archive, and updating only the refresh window. The crucial prerequisite: your Power Query must [fold](query-folding.md) the `RangeStart`/`RangeEnd` filter back to the source — if it doesn't fold, the source has to send all rows and the whole point of incremental refresh is lost.
 
-**Key facts:**
-- If query folding breaks, the entire date range is pulled — no error, just silent full-refresh behavior
-- `Detect data changes` option lets you skip refreshing a partition if a "last updated" column hasn't changed — major performance win for append-only tables
-- Historical partitions can be set to `Import` while the refresh window uses `DirectQuery` (hybrid mode)
-- After publishing, incremental refresh policy cannot be changed without re-publishing the full dataset
-- Use `XMLA endpoint` (Premium feature) to inspect and manage partitions directly
+## 🌍 Real-world example
+
+A retail dataset with 6 years of daily transactions (roughly 800M rows) had a full refresh that took 4 hours and was regularly failing due to gateway timeout. After enabling incremental refresh with a 3-month refresh window and a 6-year archive, the daily refresh dropped to 8 minutes. The archive partitions loaded once during initial setup and have been untouched ever since.
+
+## 🔗 Related
+
+- [Query Folding](query-folding.md)
+- [Import vs DirectQuery](import-vs-directquery.md)
+- [Column Cardinality](column-cardinality.md)

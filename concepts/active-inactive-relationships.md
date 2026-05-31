@@ -1,69 +1,47 @@
-# Active vs Inactive Relationships
+# 🔌 Active vs Inactive Relationships
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Only one relationship between two tables can be active — the rest sit on standby until called.
 
-A fact table for sales orders has three dates: the order date, the ship date, and the delivery date. You want all three connected to your date dimension so you can slice by any of them. But Power BI only lets one relationship be "live" at a time — otherwise it would not know which date to use when you drop a month slicer on the canvas.
-
-The relationship you use most (usually order date) becomes the **active** relationship — it fires automatically for every visual. The other two become **inactive** relationships — they sit in the background, available whenever you specifically call on them in a DAX measure.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-erDiagram
-    DimDate ||--o{ FactOrders : "OrderDateKey (ACTIVE)"
-    DimDate ||..o{ FactOrders : "ShipDateKey (inactive)"
-    DimDate ||..o{ FactOrders : "DeliveryDateKey (inactive)"
+flowchart LR
+    DimDate["📅 DimDate\nDateKey (PK)"]
+    FactSales["💰 FactSales"]
+    Active["OrderDateKey (FK)\n✅ active"]
+    Inactive1["ShipDateKey (FK)\n⏸️ inactive"]
+    Inactive2["DueDateKey (FK)\n⏸️ inactive"]
 
-    DimDate {
-        int DateKey PK
-        date FullDate
-        int Year
-        string MonthName
-        int Quarter
-    }
+    DimDate -->|"solid line — always on"| Active
+    Active --> FactSales
+    DimDate -.->|"dashed line — standby"| Inactive1
+    Inactive1 -.-> FactSales
+    DimDate -.->|"dashed line — standby"| Inactive2
+    Inactive2 -.-> FactSales
 
-    FactOrders {
-        int OrderKey PK
-        int OrderDateKey FK
-        int ShipDateKey FK
-        int DeliveryDateKey FK
-        decimal Revenue
-    }
+    style DimDate fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style FactSales fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style Active fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style Inactive1 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Inactive2 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
 ```
 
-> Solid lines = active relationship. Dashed lines = inactive relationship.
+The solid line carries all filters by default. Dashed lines activate only when you call them in DAX.
 
-## How it works in practice
+## 🔧 How it actually works
 
-The model has one active relationship on `OrderDateKey`. Two DAX measures activate the inactive ones on demand:
+Power BI only allows **one active relationship** between any two tables. If you have a fact table with three date columns — OrderDate, ShipDate, DueDate — and one date dimension table, you can create three relationships, but only one can be active at a time. The active relationship is the one that carries filters automatically whenever a date slicer or date column is used in a report.
 
-```dax
--- Uses the active relationship automatically
-Sales by Order Date = SUM(FactOrders[Revenue])
+The other two relationships sit in standby — they exist in the model, they're valid, but Power BI ignores them unless explicitly told otherwise. Think of your phone's default browser: Chrome handles all links automatically. Firefox is installed and ready, but it won't open anything unless you specifically choose it.
 
--- Activates the inactive ShipDateKey relationship
-Sales by Ship Date =
-CALCULATE(
-    SUM(FactOrders[Revenue]),
-    USERELATIONSHIP(FactOrders[ShipDateKey], DimDate[DateKey])
-)
+To use an inactive relationship in a DAX measure, you wrap it in `USERELATIONSHIP()`. For example, `CALCULATE([Total Sales], USERELATIONSHIP(FactSales[ShipDateKey], DimDate[DateKey]))` tells Power BI: "for this calculation only, use the ShipDate relationship instead of the active OrderDate one." Outside of that measure, the active relationship stays in charge everywhere else. This pattern is central to [role-playing dimensions](role-playing-dimensions.md).
 
--- Activates the inactive DeliveryDateKey relationship
-Sales by Delivery Date =
-CALCULATE(
-    SUM(FactOrders[Revenue]),
-    USERELATIONSHIP(FactOrders[DeliveryDateKey], DimDate[DateKey])
-)
-```
+## 🌍 Real-world example
 
-A report can then place all three measures side-by-side in a table visual, each correctly filtered by the same date slicer but through its respective relationship.
+A logistics dashboard needs two date-based visuals: "Sales by Order Date" (uses the active relationship) and "Sales by Ship Date" (uses a measure with `USERELATIONSHIP`). Both visuals can coexist on the same page, each using a different relationship to the same date table — no duplicate tables required.
 
-### Key facts
+## 🔗 Related
 
-- [ ] Only **one relationship** between any two tables can be active at a time
-- [ ] Inactive relationships are created by Power BI automatically when you try to add a second relationship between the same two tables
-- [ ] `USERELATIONSHIP()` can only be used inside a `CALCULATE()` call
-- [ ] `USERELATIONSHIP()` **temporarily deactivates** the active relationship for that calculation context
-- [ ] Inactive relationships do not appear in the relationship view with a solid line — they appear dashed
-- [ ] This pattern is the standard solution for **role-playing dimensions** (one dimension used in multiple roles)
-- [ ] Always name your FK columns clearly (`OrderDateKey`, `ShipDateKey`) so the intent is obvious in DAX
+- [Role-Playing Dimensions](role-playing-dimensions.md)
+- [Relationships](relationships.md)
+- [Cross-Filter Direction](cross-filter-direction.md)

@@ -1,87 +1,46 @@
-# Date Table Requirements
+# 📅 Date Table Requirements
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Time intelligence functions only work if your date table meets four specific requirements.
 
-Power BI has a built-in calendar that it uses to understand phrases like "year to date," "same period last year," and "rolling 12 months." But this built-in calendar is hidden, limited, and often wrong for your business.
-
-To use time intelligence functions (like `DATESYTD`, `SAMEPERIODLASTYEAR`, `DATEADD`) reliably, you must give Power BI an **explicit date table** — a proper dimension table with one row per day, no gaps, and a few required column types. Then you tell Power BI "this is my official date table" by marking it.
-
-Think of it as registering your own calendar at city hall. Until you do that, the city uses its own default calendar, which may not match your fiscal year or regional holidays.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-erDiagram
-    DimDate ||--o{ FactSales       : "DateKey"
-    DimDate ||--o{ FactReturns     : "DateKey"
-    DimDate ||--o{ FactBudget      : "DateKey"
+flowchart TB
+    Start(["📅 Date table ready?"]) --> R1{"1️⃣ One row\nper day?"}
+    R1 -->|"✅ Yes"| R2{"2️⃣ No gaps?\n(contiguous dates)"}
+    R1 -->|"❌ No"| Fail["❌ Time intelligence\nwill break"]
+    R2 -->|"✅ Yes"| R3{"3️⃣ Marked as\ndate table?"}
+    R2 -->|"❌ No"| Fail
+    R3 -->|"✅ Yes"| R4{"4️⃣ Date column\nis Date type,\nno blanks?"}
+    R3 -->|"❌ No"| Fail
+    R4 -->|"✅ Yes"| Pass["✅ TOTALYTD,\nSAMEPERIODLASTYEAR,\netc. will work"]
+    R4 -->|"❌ No"| Fail
 
-    DimDate {
-        date Date PK
-        int Year
-        int MonthNumber
-        string MonthName
-        int Quarter
-        string QuarterLabel
-        int WeekNumber
-        string DayOfWeekName
-        int FiscalYear
-        int FiscalQuarter
-        bool IsWeekend
-        bool IsHoliday
-    }
+    style Start fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style Pass fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style Fail fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style R1 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style R2 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style R3 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style R4 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
 ```
 
-## How it works in practice
+All four requirements must be met. Miss one and time intelligence functions return wrong results or errors.
 
-**Minimum requirements for marking a table as a date table:**
+## 🔧 How it actually works
 
-1. Contains a column of data type **Date** (not DateTime)
-2. That column has **no blank or null values**
-3. That column has **no duplicate values** — one row per day
-4. The date range **covers all dates** referenced in any fact table (ideally with a buffer of at least one full year on each side)
+DAX time intelligence functions — `TOTALYTD`, `SAMEPERIODLASTYEAR`, `DATEADD`, `PREVIOUSMONTH`, and others — are conveniences that do complex date math on your behalf. But they only work correctly if they can trust the structure of your date table. Power BI enforces four rules before it considers a date table trustworthy enough for time intelligence.
 
-**Marking the table in Power BI Desktop:**
-Right-click the table in the field list → **Mark as date table** → select the `Date` column.
+**Rule 1: One row per calendar day.** Every date in the range must appear exactly once. No duplicate dates, no missing dates between your start and end. **Rule 2: Contiguous range.** If your data spans January 2020 to December 2025, your date table must have a row for every single day in that range — even days with no transactions. A gap (say, the dates around a system outage) breaks date math that crosses the gap. **Rule 3: Marked as date table.** In the Table tools ribbon, you must explicitly click "Mark as date table" and specify which column is the date column. This tells Power BI to use your table for time intelligence instead of auto-generating its own internal calendar. **Rule 4: The date column must be of the Date data type with no blank values.** If there are null dates in the column, the marking step will refuse to complete.
 
-**DAX date table (calculated table approach):**
-```dax
-DimCalendar =
-VAR StartDate = DATE(2019, 1, 1)
-VAR EndDate   = DATE(2026, 12, 31)
-RETURN
-ADDCOLUMNS(
-    CALENDAR(StartDate, EndDate),
-    "Year",           YEAR([Date]),
-    "MonthNumber",    MONTH([Date]),
-    "MonthName",      FORMAT([Date], "MMMM"),
-    "MonthShort",     FORMAT([Date], "MMM"),
-    "Quarter",        QUARTER([Date]),
-    "QuarterLabel",   "Q" & QUARTER([Date]) & " " & YEAR([Date]),
-    "DayOfWeekNum",   WEEKDAY([Date], 2),
-    "DayOfWeekName",  FORMAT([Date], "dddd"),
-    "IsWeekend",      WEEKDAY([Date], 2) >= 6,
-    "FiscalYear",     IF(MONTH([Date]) >= 7, YEAR([Date]) + 1, YEAR([Date])),
-    "FiscalQuarter",  SWITCH(TRUE(),
-                          MONTH([Date]) IN {7,8,9},   1,
-                          MONTH([Date]) IN {10,11,12}, 2,
-                          MONTH([Date]) IN {1,2,3},   3,
-                          4)
-)
-```
+The city hall analogy: a city hall only stamps documents if you bring the right paperwork, properly filled out, with no missing fields. No exceptions, no workarounds, no partial approvals. Your date table is the paperwork.
 
-**What breaks without a properly marked date table:**
-- `DATESYTD()`, `TOTALYTD()`, `SAMEPERIODLASTYEAR()` — all fail or produce incorrect results
-- Power BI's auto date/time hierarchy generates hidden tables per column — creates model bloat
-- Time intelligence over fiscal periods is impossible without fiscal year columns
+## 🌍 Real-world example
 
-### Key facts
+A report using `TOTALYTD([Revenue], DimDate[Date])` was returning blank for certain months. Investigation revealed the date table was generated from the fact table using `DISTINCT(FactSales[OrderDate])` — which meant it only had rows for dates that had sales. Weekends and holidays with no orders were missing, breaking the contiguous requirement. Replacing it with `CALENDAR(DATE(2020,1,1), DATE(2026,12,31))` fixed all the blanks.
 
-- [ ] The date column must be **data type Date** — not DateTime, not text, not integer
-- [ ] The date column must be **contiguous** — no missing days between the min and max date
-- [ ] The date column must have **no duplicates** and **no nulls**
-- [ ] The date range must **fully cover** the date range in all related fact tables — partial coverage causes blank results at the edges
-- [ ] After creating the table, explicitly **Mark as date table** in Power BI Desktop — without this, time intelligence functions may still fail
-- [ ] Disable the **Auto date/time** setting in Power BI Desktop options (File → Options → Data Load) to prevent Power BI from generating hidden date tables for every date column
-- [ ] Add **fiscal year and quarter columns** if your business does not follow the calendar year — these cannot be derived by built-in functions
-- [ ] One date table can serve multiple fact tables — each fact table gets its own relationship to `DimDate` using the appropriate date key
+## 🔗 Related
+
+- [Calculated Tables](calculated-tables.md)
+- [Role-Playing Dimensions](role-playing-dimensions.md)
+- [Active vs Inactive Relationships](active-inactive-relationships.md)

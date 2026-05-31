@@ -1,74 +1,43 @@
-# Snowflake Schema
+# ❄️ Snowflake Schema
 
-## ELI5
+> **🧒 Explain Like I'm 5:** A star schema where dimension tables branch further into sub-dimensions — usually a trap in Power BI.
 
-A star schema has one dimension table per concept (Product, Customer, Date). A **snowflake schema** takes those dimension tables and splits them further into sub-tables.
-
-Instead of one `DimProduct` that contains both the product name and the category name, you have `DimProduct` pointing to a separate `DimCategory` table. It looks like a snowflake — the star's points branch out again.
-
-The trade-off: your source database analysts love it because it eliminates data redundancy. Your Power BI model does not love it because every extra join is an extra hop that can slow down queries and complicate DAX.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-erDiagram
-    DimCategory    ||--o{ DimSubcategory : "CategoryKey"
-    DimSubcategory ||--o{ DimProduct     : "SubcategoryKey"
-    DimProduct     ||--o{ FactSales      : "ProductKey"
-    DimGeography   ||--o{ DimCustomer    : "GeographyKey"
-    DimCustomer    ||--o{ FactSales      : "CustomerKey"
-    DimDate        ||--o{ FactSales      : "DateKey"
-
-    DimCategory {
-        int CategoryKey PK
-        string CategoryName
-    }
-
-    DimSubcategory {
-        int SubcategoryKey PK
-        int CategoryKey FK
-        string SubcategoryName
-    }
-
-    DimProduct {
-        int ProductKey PK
-        int SubcategoryKey FK
-        string ProductName
-        decimal ListPrice
-    }
-
-    FactSales {
-        int SalesKey PK
-        int ProductKey FK
-        int CustomerKey FK
-        int DateKey FK
-        decimal Revenue
-    }
+flowchart LR
+    subgraph Star["✅ Star — flat and fast"]
+        FS1["💰 FactSales"] --- DP1["📦 DimProduct\nProductName\nCategory\nDepartment"]
+    end
+    subgraph Snowflake["⚠️ Snowflake — flatten in Power Query"]
+        FS2["💰 FactSales"] --- DP2["📦 DimProduct\nProductName\nCategoryID"]
+        DP2 --> DC["🗂️ DimCategory\nCategoryName\nDepartmentID"]
+        DC --> DD["🏢 DimDepartment\nDepartmentName"]
+    end
+    style FS1 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style DP1 fill:#dcfce7,stroke:#22c55e,color:#1f2937
+    style FS2 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style DP2 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style DC fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style DD fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
 ```
 
-## How it works in practice
+Flatten the sub-dimension tables into one in Power Query before they reach the model.
 
-A data warehouse team delivers a snowflake schema from their SQL database. The modeler has two options:
+## 🔧 How it actually works
 
-**Option 1 — Flatten in Power Query (recommended for Power BI):**
-Merge `DimProduct`, `DimSubcategory`, and `DimCategory` into a single denormalized `DimProduct` table. The result is a clean star schema. VertiPaq compresses the repeated category names efficiently, so the storage cost is negligible.
+A **snowflake schema** is what happens when dimension tables are normalized — split into sub-tables to reduce redundancy. Instead of DimProduct containing Category and Department as columns, Category lives in its own DimCategory table, and Department lives in its own DimDepartment table. This is great database design for transactional systems (OLTP), but it's the wrong shape for Power BI's in-memory engine (VertiPaq).
 
-```
-// Power Query: merge subcategory into product, then merge category
-DimProduct
-  → Merge with DimSubcategory on SubcategoryKey
-  → Merge with DimCategory on CategoryKey
-  → Remove FK columns, keep name columns
-```
+The address book analogy: instead of one card per person with their city and country written on it, you have a card that points to a city card that points to a country card. In theory it's tidier — update one city card and everything that references it gets updated. In practice, every time you want someone's country you have to follow two links. More joins, more complexity, more places for things to go wrong.
 
-**Option 2 — Keep the snowflake, accept the trade-offs:**
-Retain all three tables with their relationships. DAX context flows through the chain (`DimCategory` → `DimSubcategory` → `DimProduct` → `FactSales`), but every extra hop is a potential performance cost and makes DAX like `RELATED()` chains more complex.
+Power BI can handle snowflake schemas — it just doesn't thrive on them. Every extra relationship is extra join overhead at query time. Every extra table clutters the model view and the field list. The recommended fix is to merge the sub-dimension tables back into a flat dimension in **Power Query** before they reach the model. You get the normalized source (and its update advantages) at the database level, while Power BI gets the flat star schema it performs best with.
 
-### Key facts
+## 🌍 Real-world example
 
-- [ ] Snowflake schemas come from normalized databases designed for OLTP — they are **not optimized for analytical queries**
-- [ ] Power BI performs best with a **flattened star schema** — flatten snowflake dimensions in Power Query before loading
-- [ ] VertiPaq compresses repeated string values extremely well — the "wasted space" argument for normalization does not apply
-- [ ] If you must keep the snowflake, ensure filter propagation flows **toward** the fact table (not away)
-- [ ] Deep chains (4+ hops from a dimension to the fact) are a model design warning sign
-- [ ] Use Power Query's **Merge Queries** to flatten, not calculated columns — transformations before load are faster and keep the model cleaner
+A data warehouse exports DimProduct, DimCategory, and DimDepartment as separate tables. In Power Query, you use a merge step to pull CategoryName and DepartmentName directly into DimProduct, then disable loading DimCategory and DimDepartment. The model sees one flat DimProduct table. The warehouse stays normalized. Everyone wins.
+
+## 🔗 Related
+
+- [Star Schema](star-schema.md)
+- [Fact vs Dimension Tables](fact-vs-dimension.md)
+- [Query Folding](query-folding.md)

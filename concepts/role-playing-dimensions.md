@@ -1,81 +1,38 @@
-# Role-Playing Dimensions
+# 🎭 Role-Playing Dimensions
 
-## ELI5
+> **🧒 Explain Like I'm 5:** One date table playing three characters: Order Date, Ship Date, and Due Date.
 
-Think of an actor who plays three different characters in the same movie — the same person, three different roles. A role-playing dimension is the same idea: **one dimension table** (usually `DimDate`) that gets used multiple times in the same fact table, each time in a different role (order date, ship date, delivery date).
-
-Because Power BI only allows one active relationship between two tables at a time, you have two options: use inactive relationships with `USERELATIONSHIP()`, or make physical copies of the dimension — one copy per role — each with its own active relationship.
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-erDiagram
-    DimOrderDate   ||--o{ FactOrders : "OrderDateKey (ACTIVE)"
-    DimShipDate    ||--o{ FactOrders : "ShipDateKey (ACTIVE)"
-    DimDeliveryDate ||--o{ FactOrders : "DeliveryDateKey (ACTIVE)"
+flowchart LR
+    DimDate["📅 DimDate\n(single table)"]
+    FactSales["💰 FactSales\nOrderDateKey\nShipDateKey\nDueDateKey"]
 
-    DimOrderDate {
-        int DateKey PK
-        date FullDate
-        int Year
-        string MonthName
-    }
+    DimDate -->|"✅ active\n(OrderDate)"| FactSales
+    DimDate -.->|"⏸️ inactive\n(ShipDate)"| FactSales
+    DimDate -.->|"⏸️ inactive\n(DueDate)"| FactSales
 
-    DimShipDate {
-        int DateKey PK
-        date FullDate
-        int Year
-        string MonthName
-    }
-
-    DimDeliveryDate {
-        int DateKey PK
-        date FullDate
-        int Year
-        string MonthName
-    }
-
-    FactOrders {
-        int OrderKey PK
-        int OrderDateKey FK
-        int ShipDateKey FK
-        int DeliveryDateKey FK
-        decimal Revenue
-    }
+    style DimDate fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style FactSales fill:#fef3c7,stroke:#f59e0b,color:#1f2937
 ```
 
-> Each `Dim*Date` table is a copy of the same underlying date dimension, each with its own active relationship.
+One actor, three roles — each relationship gives the same table a different character in the story.
 
-## How it works in practice
+## 🔧 How it actually works
 
-**Approach 1 — Physical copies (calculated tables or Power Query duplicates):**
+A **role-playing dimension** is one dimension table that serves multiple purposes in the same fact table. The classic example is dates: a sales transaction has an order date, a ship date, and a due date. All three are dates, so all three should look up into the same DimDate table. Instead of duplicating DimDate three times, you create three relationships — one per date column — and activate only the one that represents the default date context (usually OrderDate).
 
-Create separate dimension tables using a calculated table in DAX:
+The inactive relationships don't disappear — they're available for DAX measures using `USERELATIONSHIP()`. A measure like `Shipped Sales` can be written to filter by ShipDate while every default visual filters by OrderDate. One table, three distinct behaviors, zero duplication.
 
-```dax
-DimShipDate = DimDate
-DimDeliveryDate = DimDate
-```
+Some modelers do create duplicate date tables (e.g., DimOrderDate, DimShipDate, DimDueDate) for simplicity — especially when each date column needs a different set of visible columns in the field list. That approach works fine but costs memory. The single-table-with-inactive-relationships approach is leaner; the tradeoff is that inactive relationships require explicit DAX to activate. Pick the approach that fits your team's DAX comfort level.
 
-Each copy gets its own active relationship. Slicers on `DimShipDate[MonthName]` filter `FactOrders` via the ship date path, with no DAX gymnastics needed.
+## 🌍 Real-world example
 
-**Approach 2 — One table with inactive relationships:**
+A manufacturing dashboard shows "On-Time Delivery %" — the ratio of orders where ShipDate was on or before DueDate. The measure uses `USERELATIONSHIP` twice in the same calculation, once to access ShipDate values and once for DueDate values, all from the same DimDate table. Without role-playing dimensions, this would require either two separate date tables or a much messier calculated column approach.
 
-Keep a single `DimDate` with one active relationship and use `USERELATIONSHIP()` in measures for the other roles. Simpler model graph, but every "ship date" or "delivery date" measure must explicitly call `USERELATIONSHIP()`.
+## 🔗 Related
 
-**When to use which:**
-
-| Situation | Recommended approach |
-|---|---|
-| Few date roles, mostly measure-level analysis | Single table + `USERELATIONSHIP()` |
-| Report pages dedicated to each date role | Physical copies — simpler slicer/filter setup |
-| Report users drag columns directly (no measures) | Physical copies — inactive relationships won't help |
-
-### Key facts
-
-- [ ] Role-playing dimensions most commonly occur with `DimDate` but apply to any dimension reused in multiple contexts
-- [ ] Physical copies increase model size but make the report canvas behavior simpler and more intuitive
-- [ ] `USERELATIONSHIP()` adds friction — every developer touching those measures must know to include it
-- [ ] Calculated table copies (`DimShipDate = DimDate`) share the same source data — they stay in sync automatically
-- [ ] Prefix the copy table names clearly: `DimOrderDate`, `DimShipDate`, `DimDeliveryDate`
-- [ ] In the report view, hide duplicate tables from the field list if users should only interact with measures, not raw columns
+- [Active vs Inactive Relationships](active-inactive-relationships.md)
+- [Date Table Requirements](date-table-requirements.md)
+- [Relationships](relationships.md)

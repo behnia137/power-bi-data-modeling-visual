@@ -1,59 +1,34 @@
-# Fact vs Dimension Tables
+# 📊 Fact vs Dimension Tables
 
-## ELI5
+> **🧒 Explain Like I'm 5:** Fact tables hold numbers and events. Dimension tables hold the context that makes those numbers meaningful.
 
-Think of a receipt from the grocery store. The line items — 2 apples, 1 loaf of bread, $14.73 total — are the **facts**. They are numbers that happened at a specific moment and cannot be changed after the fact.
-
-Now think of all the label information around those numbers: the store's name and address, the product's brand and category, the cashier's name, today's date. That is the **dimension** data — it describes *who, what, where, and when* around the facts.
-
-Fact tables are tall and skinny (millions of rows, mostly numbers). Dimension tables are short and wide (thousands of rows, mostly text).
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-erDiagram
-    DimProduct ||--o{ FactSales : "ProductKey"
-    DimCustomer ||--o{ FactSales : "CustomerKey"
-    DimDate ||--o{ FactSales : "DateKey"
-    DimStore ||--o{ FactSales : "StoreKey"
-
-    FactSales {
-        int SalesKey PK
-        int ProductKey FK
-        int CustomerKey FK
-        int DateKey FK
-        int StoreKey FK
-        decimal SalesAmount
-        decimal Cost
-        int Quantity
-    }
-
-    DimProduct {
-        int ProductKey PK
-        string ProductName
-        string Category
-        string Brand
-        decimal ListPrice
-    }
-
-    DimCustomer {
-        int CustomerKey PK
-        string FullName
-        string Email
-        string City
-        string Segment
-    }
+flowchart LR
+    FactSales["📊 FactSales\n───────────\nOrderDate (FK)\nProductID (FK)\nCustomerID (FK)\nQuantity\nSalesAmount\nDiscount"]
+    DimProduct["📦 DimProduct\n───────────\nProductID (PK)\nProductName\nCategory\nColor\nListPrice"]
+    DimProduct --> FactSales
+    style FactSales fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style DimProduct fill:#dbeafe,stroke:#3b82f6,color:#1f2937
 ```
 
-## How it works in practice
+The fact table is mostly numbers and foreign keys. The dimension table is mostly descriptions.
 
-A sales analyst builds a report showing revenue by product category over time. The `SalesAmount` and `Quantity` columns come from `FactSales`. The `Category` label in the visual axis comes from `DimProduct`. The month name on the X-axis comes from `DimDate`. The fact table never stores any of those labels — it only stores the foreign keys that point to them.
+## 🔧 How it actually works
 
-### Key facts
+A **fact table** records things that happened — a sale, a web session, a support ticket. Its rows are events, and its columns are either **measures** (the numbers you'll aggregate: quantity, amount, duration) or **foreign keys** (the IDs that point to dimension tables). Fact tables tend to be tall and narrow: millions of rows, but relatively few columns.
 
-- [ ] Fact tables hold **measurable events** — sales, clicks, payments, log entries
-- [ ] Dimension tables hold **descriptive attributes** — names, categories, addresses, codes
-- [ ] Fact table rows should be **additive** — it makes sense to SUM or COUNT them
-- [ ] Dimension tables must have a **unique primary key** column with no nulls or duplicates
-- [ ] Never put descriptive text (product name, customer city) directly in the fact table — it inflates row size and defeats VertiPaq compression
-- [ ] A column in a fact table that is not a measure and not a foreign key is a design smell — move it to a dimension
+A **dimension table** describes the people, places, and things involved in those events. Its rows are entities — a product, a customer, a store — and its columns are attributes you'd use to slice and filter: category, city, store size. Dimension tables are typically short and wide: fewer rows, but many descriptive columns. The primary key in a dimension table is the same ID that appears as a foreign key in the fact table.
+
+The receipt analogy works well here. The receipt itself (fact) tells you that three large pepperonis were ordered at 7:15 pm for $32.50. The customer record (dimension) tells you the customer's name, loyalty tier, and city. The product record (dimension) tells you the category, size options, and allergens. Neither the receipt nor the records are useful alone — together they answer real questions.
+
+## 🌍 Real-world example
+
+In a retail model, `FactSales` has one row per transaction line. `DimCustomer` has one row per customer. When a report asks "what's total revenue by customer region?", Power BI filters `DimCustomer` on the region column, follows the relationship into `FactSales`, and sums `SalesAmount` for only the matching rows.
+
+## 🔗 Related
+
+- [Star Schema](star-schema.md)
+- [Relationships](relationships.md)
+- [Cardinality](cardinality.md)

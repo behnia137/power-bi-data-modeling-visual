@@ -1,49 +1,44 @@
-# Cardinality
+# 🔢 Cardinality
 
-## ELI5
+> **🧒 Explain Like I'm 5:** How many matching rows exist on each side of a relationship — one-to-many, one-to-one, or many-to-many.
 
-Cardinality is just the answer to: "for every row on this side of the relationship, how many matching rows can exist on the other side?"
-
-Think about a library. One author can write many books — that is a **one-to-many** relationship. One book has exactly one ISBN — that is **one-to-one**. A book can belong to many genres and a genre can cover many books — that is **many-to-many**.
-
-Power BI needs to know the cardinality so it applies filters correctly and warns you when something looks wrong (like a dimension table that accidentally has duplicate keys).
-
-## Visual
+## 🖼️ The Picture
 
 ```mermaid
-graph TD
-    subgraph One-to-Many  typical star schema
-        D1[DimCustomer\none row per customer] -->|"1 : *"| F1[FactSales\nmany rows per customer]
+flowchart LR
+    subgraph OneToMany["1 : * (one-to-many — normal)"]
+        D1["📦 DimProduct\nProductID: 101"] -->|"one product\nmany sales"| F1["💰 FactSales\nRow 1: ProductID 101\nRow 2: ProductID 101\nRow 3: ProductID 101"]
     end
-
-    subgraph One-to-One  lookup or split table
-        D2[DimEmployee] -->|"1 : 1"| D3[DimEmployeePhoto]
+    subgraph OneToOne["1 : 1 (one-to-one — rare)"]
+        D2["🧾 DimEmployee\nEmployeeID: 7"] -->|"one employee\none quota row"| F2["🎯 FactQuota\nEmployeeID: 7"]
     end
-
-    subgraph Many-to-Many  needs bridge or special handling
-        D4[DimProduct] -->|"* : *"| D5[DimPromotion]
+    subgraph ManyToMany["* : * (many-to-many — careful)"]
+        D3["👤 DimCustomer"] <-->|"⚠️ ambiguous\nwithout bridge"| D4["📦 DimProduct"]
     end
+    style D1 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style F1 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style D2 fill:#dbeafe,stroke:#3b82f6,color:#1f2937
+    style F2 fill:#fef3c7,stroke:#f59e0b,color:#1f2937
+    style D3 fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style D4 fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
 ```
 
-## How it works in practice
+One-to-many is the default and safest. Many-to-many needs special handling.
 
-A retail model has `DimCustomer` (one row per customer) joined to `FactSales` (many rows per customer). Power BI detects the unique `CustomerKey` in `DimCustomer` and sets the cardinality to **One-to-Many (1:*)** automatically.
+## 🔧 How it actually works
 
-If a developer accidentally loads `DimCustomer` with duplicate `CustomerKey` values, Power BI either raises a relationship warning or silently switches to Many-to-Many — both produce wrong filter results.
+**One-to-many (1:*)** is the star schema standard. One row in the dimension table matches many rows in the fact table — one product maps to hundreds of sales. Power BI handles this cleanly and efficiently. When you define a relationship, Power BI detects and sets this cardinality automatically if the key column in your dimension table has unique values.
 
-### Cardinality types in Power BI
+**One-to-one (1:1)** means each row on one side matches exactly one row on the other. This is rare and often a sign that two tables could simply be merged. It works fine in Power BI but adds a relationship without adding much — consider whether a merge in Power Query makes more sense.
 
-| Setting | Meaning | Typical use |
-|---|---|---|
-| One-to-Many (1:*) | One unique key joins to many rows | Dimension → Fact (default star schema) |
-| Many-to-One (*:1) | Same as above, stated from the fact side | Power BI shows this when the fact table is on the left |
-| One-to-One (1:1) | Both columns are unique | Split dimension tables, language variants |
-| Many-to-Many (*:*) | Neither column is unique | Currency exchange rates, tag assignments — use carefully |
+**Many-to-many (\*:\*)** is where things get tricky. A customer can buy many products, and a product can be bought by many customers — but there's no clean single key connecting them. Power BI allows many-to-many relationships directly, but the filter behavior can be surprising and performance can suffer. The cleaner solution is a [bridge table](bridge-tables.md) that sits between the two and resolves the relationship through two 1:many connections.
 
-### Key facts
+## 🌍 Real-world example
 
-- [ ] Always verify that the "one" side column has **no duplicate values** — use `COUNTROWS` = `DISTINCTCOUNT` to check
-- [ ] Many-to-many relationships in VertiPaq use an internal bridge and can cause unexpected filter behavior
-- [ ] Prefer resolving many-to-many with an explicit **bridge table** rather than the built-in many-to-many setting
-- [ ] One-to-one relationships are rare in a clean star schema — consider merging the tables if they always travel together
-- [ ] Setting the wrong cardinality will not always produce an error — it will silently produce wrong numbers
+School data: one teacher teaches many students (1:many — ideal). One student has one enrollment record (1:1 — fine). Many students join many clubs (many:many — needs a bridge table like `StudentClubMemberships` with one row per student-club combination).
+
+## 🔗 Related
+
+- [Relationships](relationships.md)
+- [Bridge Tables](bridge-tables.md)
+- [Cross-Filter Direction](cross-filter-direction.md)
